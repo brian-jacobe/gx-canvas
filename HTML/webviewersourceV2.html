@@ -265,74 +265,55 @@ data:text/html,
         };
 
         // Toggles the current "mode" of the canvas
-        // Calls the glo
         // TODO : Rewrite this function to be cleaner / more eff
         function toggleMode(mode) {
+            // Helper function to reset the current mode if it's the same
+            function toggleCurrentMode(newMode, actionCallback) {
+                if(currentMode == newMode) {
+                    currentMode = modes.default;
+                } else {
+                    currentMode = newMode;
+                    actionCallback();
+                }
+            }
+
+            // General function to toggle shape modes
+            function toggleShapeMode(shapeMode, enableCallback, disableCallback) {
+                if(currentMode == shapeMode) {
+                    disableCallback();
+                    currentMode = modes.default;
+                } else if(currentMode == modes.default) {
+                    enableCallback();
+                    currentMode = shapeMode;
+                }
+            }
+
+            // General toggling of other modes
             if(canvas.isDrawingMode) toggleDrawing();
             if(currentMode == modes.pan) togglePanMode();
             toggleSelectables();
+
             switch(mode) {
                 case modes.text: 
-                    // If mode is already in selected mode, toggle off
-                    if(currentMode == modes.text) {
-                        currentMode = modes.default
-                    }
-                    toggleTextDraw(); 
+                    toggleCurrentMode(modes.text, toggleTextDraw);
                     break;
                 case modes.note:
-                    if(currentMode == modes.note) {
-                        currentMode = modes.default;
-                    } else {
-                        currentMode = modes.note;
-                    }
-                    toggleAddNote();
-                    break;
+                    toggleCurrentMode(modes.note, toggleAddNote);
+                    break;  
                 case modes.draw: 
                     toggleDrawing();
                     break;
                 case modes.shape.rect:
-                    if(currentMode == modes.shape.rect) {
-                        disableRectDrawMode();
-                        currentMode = modes.default;
-                    } else if(currentMode == modes.default) {
-                        enableRectDrawMode();
-                        currentMode = modes.shape.rect;
-                    } else {
-                        return;
-                    }
+                    toggleShapeMode(modes.shape.rect, enableRectDrawMode, disableRectDrawMode);
                     break;
                 case modes.shape.circle:
-                    if(currentMode == modes.shape.circle) {
-                        disableCircleDrawMode();
-                        currentMode = modes.default;
-                    } else if(currentMode == modes.default) {
-                        enableCircleDrawMode();
-                        currentMode = modes.shape.circle;
-                    } else {
-                        return;
-                    }
+                    toggleShapeMode(modes.shape.circle, enableCircleDrawMode, disableCircleDrawMode);
                     break;
                 case modes.shape.ellipse: 
-                    if(currentMode == modes.shape.ellipse) {
-                        disableEllipseDrawMode();
-                        currentMode = modes.default;
-                    } else if(currentMode == modes.default) {
-                        enableEllipseDrawMode();
-                        currentMode = modes.shape.ellipse;
-                    } else {
-                        return;
-                    }
+                    toggleShapeMode(modes.shape.ellipse, enableEllipseDrawMode, disableEllipseDrawMode);
                     break;
                 case modes.shape.triangle: 
-                    if(currentMode == modes.shape.triangle) {
-                        disableTriangleDrawMode();
-                        currentMode = modes.default;
-                    } else if(currentMode == modes.default) {
-                        enableTriangleDrawMode();
-                        currentMode = modes.shape.triangle;
-                    } else {
-                        return;
-                    }
+                    toggleShapeMode(modes.shape.triangle, enableTriangleDrawMode, disableTriangleDrawMode);
                     break;
                 default: 
                     break;
