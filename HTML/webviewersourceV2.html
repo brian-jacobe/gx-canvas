@@ -129,18 +129,24 @@ data:text/html,
             spray,
             erase,
         };
-        // Variables to store states for Modes
-        // TODO : Cut isX Variables and migrate to use currentMode object
-        let isPanMode = false;
-        let isRulerMode = false;
-        let isEraseMode = false;
-        let isTextMode = false;
-        let isRectMode = false;
-        let shapeOutline = new fabric.Object();
-        let isSelectable = true;
-        let isEditing = false;
-        let currShape = modes.shape.rect;
+        // Var currentMode keeps track of the state of the canvas
+        // Defined above from modes
         let currentMode = modes.default; 
+
+        // Var shapeOutline -> Fabric Object used to create new shapes on canvas
+        // Initialized once, reused to create new shapes
+        let shapeOutline = new fabric.Object();
+
+        // Global variable to indicate the Selectability status of the canvas
+        // Only turned off when in Pan Mode / Adding a new shape 
+        let isSelectable = true;
+
+        // Global variable to indicate if the current session is currently making a new MarkUp Layer
+        // Default is false, toggles to true after first canvas interaction then false after MarkUp is saved / cancelled
+        let isEditing = false;
+
+        // Global variables for keeping track of the first click position of the cursor on the canvas
+        // Defaults to {0, 0}
         let cursor_x = 0, cursor_y = 0;
         
         // Static vars for canvas width and height, change as needed
@@ -263,12 +269,14 @@ data:text/html,
         // TODO : Rewrite this function to be cleaner / more eff
         function toggleMode(mode) {
             if(canvas.isDrawingMode) toggleDrawing();
-            if(isPanMode) togglePanMode();
+            if(currentMode == modes.pan) togglePanMode();
             toggleSelectables();
             switch(mode) {
                 case modes.text: 
                     // If mode is already in selected mode, toggle off
-                    isTextMode = isTextMode ? false : true;
+                    if(currentMode == modes.text) {
+                        currentMode = modes.default
+                    }
                     toggleTextDraw(); 
                     break;
                 case modes.note:
@@ -334,7 +342,7 @@ data:text/html,
 
         // Toggles the drawing mode of the canvas
         function toggleDrawing() {
-            if(isPanMode) {
+            if(currentMode == modes.pan) {
                 togglePanMode();
             }
             canvas.isDrawingMode = !canvas.isDrawingMode;
@@ -353,10 +361,10 @@ data:text/html,
             if(canvas.isDrawingMode) {
                 toggleDrawing();
             }
-            isPanMode = !isPanMode; 
+            currentMode = modes.default;
             const allObjects = canvas.getObjects();
             allObjects.forEach(obj => {
-                obj.selectable = !isPanMode;
+                obj.selectable = !obj.selectable;
             });
         };
 
@@ -468,7 +476,7 @@ data:text/html,
 
         // Mouse event to drag canvas
         canvas.on('mouse:down', function(opt) {
-            if(canvas.isDrawingMode || isPanMode) return;
+            if(canvas.isDrawingMode || currentMode == modes.pan) return;
             var evt = opt.e;
             this.isDragging = true;
             this.selection = false;
@@ -478,7 +486,7 @@ data:text/html,
 
         // TODO : Fix Functionality
         canvas.on('mouse:move', function(opt) {
-            if(canvas.isDrawingMode || !isPanMode) return;
+            if(canvas.isDrawingMode || currentMode != modes.pan) return;
             if (this.isDragging) {
                 var e = opt.e;
                 var vpt = this.viewportTransform;
@@ -585,7 +593,7 @@ data:text/html,
 
         // Enables event listeners for adding text to the canvas
         function toggleTextDraw() {
-            if(isTextMode) {
+            if(currentMode == modes.text) {
                 canvas.on('mouse:down', addTextBox);
             } else {
                 canvas.off('mouse:down', addTextBox);
