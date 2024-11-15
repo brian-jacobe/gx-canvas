@@ -265,7 +265,7 @@ data:text/html,
         };
 
         // Toggles the current "mode" of the canvas
-        // TODO : Rewrite this function to be cleaner / more eff
+        // Based on the value of currentMode
         function toggleMode(mode) {
             // Helper function to reset the current mode if it's the same
             function toggleCurrentMode(newMode, actionCallback) {
@@ -276,7 +276,6 @@ data:text/html,
                     actionCallback();
                 }
             }
-
             // General function to toggle shape modes
             function toggleShapeMode(shapeMode, enableCallback, disableCallback) {
                 if(currentMode == shapeMode) {
@@ -287,12 +286,10 @@ data:text/html,
                     currentMode = shapeMode;
                 }
             }
-
             // General toggling of other modes
             if(canvas.isDrawingMode) toggleDrawing();
             if(currentMode == modes.pan) togglePanMode();
             toggleSelectables();
-
             switch(mode) {
                 case modes.text: 
                     toggleCurrentMode(modes.text, toggleTextDraw);
@@ -345,7 +342,8 @@ data:text/html,
             currentMode = modes.default;
             const allObjects = canvas.getObjects();
             allObjects.forEach(obj => {
-                obj.selectable = !obj.selectable;
+                let selectable = obj.selectable;
+                obj.selectable = !selectable;
             });
         };
 
