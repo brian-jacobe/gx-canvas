@@ -271,6 +271,7 @@ data:text/html,
             function toggleCurrentMode(newMode, actionCallback) {
                 if(currentMode == newMode) {
                     currentMode = modes.default;
+                    actionCallback();
                 } else {
                     currentMode = newMode;
                     actionCallback();
@@ -290,6 +291,33 @@ data:text/html,
             if(canvas.isDrawingMode) toggleDrawing();
             if(currentMode == modes.pan) togglePanMode();
             toggleSelectables();
+            // Check if mode being switched to is a new mode. If so, turn off event listeners for prievious mode (if applicable)
+            if(currentMode != modes.default && currentMode != mode) {
+                let prev_mode = currentMode;
+                currentMode = modes.default;
+                switch(prev_mode) {
+                case modes.text: 
+                    toggleCurrentMode(modes.text, toggleTextDraw);
+                    break;
+                case modes.note:
+                    toggleCurrentMode(modes.note, toggleAddNote);
+                    break;  
+                case modes.shape.rect:
+                    toggleShapeMode(modes.shape.rect, enableRectDrawMode, disableRectDrawMode);
+                    break;
+                case modes.shape.circle:
+                    toggleShapeMode(modes.shape.circle, enableCircleDrawMode, disableCircleDrawMode);
+                    break;
+                case modes.shape.ellipse: 
+                    toggleShapeMode(modes.shape.ellipse, enableEllipseDrawMode, disableEllipseDrawMode);
+                    break;
+                case modes.shape.triangle: 
+                    toggleShapeMode(modes.shape.triangle, enableTriangleDrawMode, disableTriangleDrawMode);
+                    break;
+                default: 
+                    break;
+                }
+            }
             switch(mode) {
                 case modes.text: 
                     toggleCurrentMode(modes.text, toggleTextDraw);
