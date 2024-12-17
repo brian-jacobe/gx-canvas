@@ -1,0 +1,909 @@
+<html>
+     <!--DOCS: http://fabricjs.com/docs/-->
+     <head>
+         <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
+<style>
+ 		    .html, body {
+                 padding:0px;
+                 margin:0px;
+                 height:100%;
+                 width:100%;
+             }
+             .wrapper {
+                 position: relative;
+                 flex-grow: 1;
+             }
+ 
+             .wrapper .canvas-container {
+                 float: right;
+                 position: absolute !important;
+             }
+ 
+             .flex-container {
+                 display: flex;
+                 gap: 15px;
+                 flex-direction: column;
+                 align-items: flex-end;
+                 position: absolute;
+                 justify-content: space-between;
+             }
+ 
+             .hidden {
+                 display: none;
+             }
+ 
+             .flexButton {
+                 width: 40px;
+                 height: 40px;
+                 display: inline-block;
+                 text-align: center;
+                 margin-left: auto;
+                 font-size: 10px;
+             }
+         </style>
+     </head>
+    <body style="background-color: #1A1A1A;">
+         <div style="color: white;">
+             <label for="Color">Color</label>
+             <input type="color" id="color" onchange="changeColor()" value="#FF0000">
+             <label for="BrushWidth">Brush Width:</label>
+             <input type="range" id="brushwidth" min="1" max="50" value="1" onchange="changeBrushWidth()">
+             <span id="nwidth">1</span>
+         </div>
+         <button id="popovertoggle" style="margin: 10px;">Show Popover</button>
+         <div id="popover" class="flex-container hidden">
+             <button class="flexButton" onclick="clearCanvas()">Reset</button>
+             <button class="flexButton" type="button" id="draw" onclick="toggleMode(modes.draw)">Draw
+                 <img src="Paint Brush.svg" width="20px" height="20px">
+             </button>
+             <button class="flexButton" type="button" id="erase" onclick="changeBrushType(brushType.erase)">Erase
+                 <img src="eraser-svgrepo-com.svg" width="20px" height="20px">
+             </button>
+             <button class="flexButton" type="button" id="text" onclick="toggleMode(modes.text)">Text
+                 <img src="text-tool-svgrepo-com.svg" width="20px" height="20px">    
+             </button>
+             <button class="flexButton" type="button" id="note" onclick="toggleMode(modes.note)">Add Note
+    
+             </button>
+             <button class="flexButton" type="button" id="pan" onclick="togglePanMode()">Pan Mode</button>
+             <button class="flexButton" type="button" id="pencil" onclick="changeBrushType(brushType.pencil)">Pencil Brush</button>
+             <button class="flexButton" type="button" id="circle_brush" onclick="changeBrushType(brushType.circle)">Circle Brush</button>
+             <button class="flexButton" type="button" id="spray" onclick="changeBrushType(brushType.spray)">SprayPaint</button>
+             <button class="flexButton" type="button" id="ruler" onclick="addRuler()">Ruler
+                 <img src="ruler-svgrepo-com.svg" width="20px" height="20px">        
+             </button>
+             <button class="flexButton" id="ellipse" onclick="toggleMode(modes.shape.ellipse)">Ellipse
+                 <img src="ellipse-figure-form-geometry-graphic-line-svgrepo-com.svg" width="20px" height="20px">           
+             </button>
+             <button class="flexButton" id="rect" onclick="toggleMode(modes.shape.rect)">Rectangle
+                 <img src="rectangle-wide-svgrepo-com.svg" width="20px" height="20px">    
+             </button>
+             <button class="flexButton" id="circle" onclick="toggleMode(modes.shape.circle)">Circle
+                 <img src="circle-svgrepo-com.svg" width="20px" height="20px">    
+             </button>
+             <button class="flexButton" id="triangle" onclick="toggleMode(modes.shape.triangle)">Triangle
+                 <img src="triangle-svgrepo-com.svg" width="20px" height="20px">     
+             </button>
+         </div>
+         <div id="canvases" class="wrapper">
+             <canvas id="canvasbottom"></canvas>
+             <canvas id="notescanvas"></canvas>
+             <canvas id="maincanvas"></canvas>
+         </div>
+     </body>
+<script>
+         /* JS Script for Canvas Work
+             Basic Outline: 
+                 -Static Variables, Objects
+                 -Canvas Initialization Functions
+                 -FileMaker-JS Interaction Functions
+                 -Canvas logic, Changing Color, Brush Type, etc. 
+                 -Event Listeners Activation
+                 -Event Listeners Logic
+         */ 
+ 
+         const modes = {
+             shape: {
+                 rect: 'rect',
+                 circle: 'circle',
+                 triangle: 'triangle',
+                 ellipse: 'ellipse',
+             },
+             text: 'text',
+             default: 'default',
+             pan: 'pan',
+             ruler: 'ruler',
+             note: 'note',
+             erase: 'erase',
+             draw: 'draw'
+         };
+         const brushType = {
+             pencil,
+             circle,
+             spray,
+             erase,
+         };
+         // Var currentMode keeps track of the state of the canvas
+         // Defined above from modes
+         let currentMode = modes.default; 
+ 
+         // Var shapeOutline -> Fabric Object used to create new shapes on canvas
+         // Initialized once, reused to create new shapes
+         let shapeOutline = new fabric.Object();
+ 
+         // Global variable to indicate the Selectability status of the canvas
+         // Only turned off when in Pan Mode / Adding a new shape 
+         let isSelectable = true;
+ 
+         // Global variable to indicate if the current session is currently making a new MarkUp Layer
+         // Default is false, toggles to true after first canvas interaction then false after MarkUp is saved / cancelled
+         let isEditing = false;
+ 
+         // Global variables for keeping track of the first click position of the cursor on the canvas
+         // Defaults to {0, 0}
+         let cursor_x = 0, cursor_y = 0;
+         
+         // Static vars for canvas width and height, change as needed
+         const canvas_width = 1085;
+         const canvas_height = 790;
+ 
+         // Initialization of Canvas elements
+         // ===================================================================
+         // Bottom Canvas for ONLY displaying image
+         // Display Canvas ONLY for displaying saved Notes 
+         // Main Canvas ONLY for making new notes/edits
+         // ===================================================================
+ 
+         // Bottom canvas used to display ONLY the injected image from the DB
+         // Layer is non-editable
+         const bottomcanvas = new fabric.Canvas('canvasbottom', {
+             backgroundColor: '#1A1A1A',
+             position: 'absolute',
+             width: canvas_width,
+             height: canvas_height,
+             selection: false,
+         })
+ 
+         // Middle Canvas to display any injected notes from the DB
+         // Layer is non-editable 
+         const notescanvas = new fabric.Canvas('notescanvas', {
+             backgroundColor: 'transparent',
+             position: 'absolute',
+             width: canvas_width,
+             height: canvas_height,
+             selection: false,
+         })
+ 
+         // Top Canvas to allow user interactivity, i.e. drawing
+         // Layer IS editable
+         const canvas = new fabric.Canvas('maincanvas', {
+             position: 'absolute',
+             backgroundColor: 'transparent',
+             width: canvas_width,
+             height: canvas_height,
+             isDrawingMode: false,
+         });
+ 
+         // Render all three canvas elements
+         bottomcanvas.requestRenderAll();
+         notescanvas.requestRenderAll();
+         canvas.requestRenderAll();
+ 
+         // Submit Canvas Data to FileMaker
+         function submitForm() {
+             isEditing = false;
+             let canvas_json = JSON.stringify(canvas);
+             FileMaker.PerformScriptWithOption("Store_Data_From_Web_Form", canvas_json);
+         }
+ 
+         // Call FileMaker Script to Inject B64Encoded Image
+         function getIMG() {
+             FileMaker.PerformScriptWithOption("Inject IMG");
+         }
+ 
+         // Called from FM Script "Inject IMG"
+         // @param B64 Encoded Image 
+         // Currently Hardcoded for PDF files, but can be adjusted for any image file
+         function injectIMG(imageObject) {
+             // Change below to data:image/jpg or data:image/png or data:application/pdf for other types
+             // Can dyamically change
+             fabric.Image.fromURL('data:image/jpg;base64,' + imageObject, function(img) {
+                 const scaleX = canvas.width / img.width;
+                 const scaleY = canvas.height / img.height;
+     
+                 // Choose the smaller scale factor to avoid stretching
+                 const scale = Math.min(scaleX, scaleY);
+                 bottomcanvas.setBackgroundImage(img, bottomcanvas.renderAll.bind(bottomcanvas), {
+                     // TODO NOT STRETCH FOR IMAGES
+                     scaleX: scale,
+                     scaleY: scale,
+                 })
+             }); 
+ 			// Ensure main canvas drawing mode is turned off
+             canvas.isDrawingMode = false;
+         };
+ 
+         // Call FileMaker Script to Restore Canvas from JSON Field
+         function callRestore() {
+             FileMaker.PerformScriptWithOption("Restore_Canvas_From_DB");
+         }
+ 
+         // Called from FM Script "Restore Canvas From DB"
+         // @param JSON Canvas Data
+         // Restores saved notes onto the canvas area
+         function restoreCanvas(canvas_json) {
+             const json_list = canvas_json.split('\r');
+             // Iterates through list of JSONS passed as a parameter
+             for(let index = 0; index < json_list.length - 1; ++index) {
+                 const json = json_list[index];
+                 if(json) {
+                     fabric.util.enlivenObjects(JSON.parse(json).objects, function(objects) {
+                         objects.forEach(function(o) {
+                             notescanvas.add(o);
+                         });
+                     })
+                     notescanvas.requestRenderAll();
+                 } else {
+                     continue;
+                 }
+             }
+         };
+ 
+         // Called from FM Script "Restore Canvas From DB"
+         // @param JSON Canvas Data
+         // Restores a single note onto the canvas area
+         function restoreSingleCanvas(canvas_json) {
+             fabric.util.enlivenObjects(JSON.parse(canvas_json).objects, function(objects) {
+                 objects.forEach(function(o) {
+                     notescanvas.add(o);
+                 });
+             })
+             notescanvas.requestRenderAll();
+         };
+ 
+         // Toggles the current "mode" of the canvas
+         // Based on the value of currentMode
+         function toggleMode(mode) {
+             // Helper function to reset the current mode if it's the same
+             function toggleCurrentMode(newMode, actionCallback) {
+                 if(currentMode == newMode) {
+                     currentMode = modes.default;
+                     actionCallback();
+                 } else {
+                     currentMode = newMode;
+                     actionCallback();
+                 }
+             }
+             // General function to toggle shape modes
+             function toggleShapeMode(shapeMode, enableCallback, disableCallback) {
+                 if(currentMode == shapeMode) {
+                     disableCallback();
+                     currentMode = modes.default;
+                 } else if(currentMode == modes.default) {
+                     enableCallback();
+                     currentMode = shapeMode;
+                 }
+             }
+             // General toggling of other modes
+             if(canvas.isDrawingMode) toggleDrawing();
+             if(currentMode == modes.pan) togglePanMode();
+             toggleSelectables();
+             // Check if mode being switched to is a new mode. If so, turn off event listeners for prievious mode (if applicable)
+             if(currentMode != modes.default && currentMode != mode) {
+                 let prev_mode = currentMode;
+                 currentMode = modes.default;
+                 switch(prev_mode) {
+                 case modes.text: 
+                     toggleCurrentMode(modes.text, toggleTextDraw);
+                     break;
+                 case modes.note:
+                     toggleCurrentMode(modes.note, toggleAddNote);
+                     break;  
+                 case modes.shape.rect:
+                     toggleShapeMode(modes.shape.rect, enableRectDrawMode, disableRectDrawMode);
+                     break;
+                 case modes.shape.circle:
+                     toggleShapeMode(modes.shape.circle, enableCircleDrawMode, disableCircleDrawMode);
+                     break;
+                 case modes.shape.ellipse: 
+                     toggleShapeMode(modes.shape.ellipse, enableEllipseDrawMode, disableEllipseDrawMode);
+                     break;
+                 case modes.shape.triangle: 
+                     toggleShapeMode(modes.shape.triangle, enableTriangleDrawMode, disableTriangleDrawMode);
+                     break;
+                 default: 
+                     break;
+                 }
+             }
+             switch(mode) {
+                 case modes.text: 
+                     toggleCurrentMode(modes.text, toggleTextDraw);
+                     break;
+                 case modes.note:
+                     toggleCurrentMode(modes.note, toggleAddNote);
+                     break;  
+                 case modes.draw: 
+                     toggleDrawing();
+                     break;
+                 case modes.shape.rect:
+                     toggleShapeMode(modes.shape.rect, enableRectDrawMode, disableRectDrawMode);
+                     break;
+                 case modes.shape.circle:
+                     toggleShapeMode(modes.shape.circle, enableCircleDrawMode, disableCircleDrawMode);
+                     break;
+                 case modes.shape.ellipse: 
+                     toggleShapeMode(modes.shape.ellipse, enableEllipseDrawMode, disableEllipseDrawMode);
+                     break;
+                 case modes.shape.triangle: 
+                     toggleShapeMode(modes.shape.triangle, enableTriangleDrawMode, disableTriangleDrawMode);
+                     break;
+                 default: 
+                     break;
+             }
+             newMarkUp();
+         };
+ 
+         // Toggles the drawing mode of the canvas
+         function toggleDrawing() {
+             if(currentMode == modes.pan) {
+                 togglePanMode();
+             }
+             canvas.isDrawingMode = !canvas.isDrawingMode;
+             const img = document.getElementById('draw').querySelector('img');
+             if(canvas.isDrawingMode) {
+                 img.src = 'Paint Brush.svg';
+                 canvas.freeDrawingBrush.color = document.getElementById('color').value;
+             } else {
+                 img.src = 'x-symbol-svgrepo-com.svg';
+             }
+         };
+ 
+         // Toggles Pan Mode
+         // Grabs every object loaded on the canvas and toggles the selectable mode for each object
+         function togglePanMode() {
+             if(canvas.isDrawingMode) {
+                 toggleDrawing();
+             }
+             currentMode = modes.default;
+             const allObjects = canvas.getObjects();
+             allObjects.forEach(obj => {
+                 let selectable = obj.selectable;
+                 obj.selectable = !selectable;
+             });
+         };
+ 
+         // Clears the top (drawing) canvas and middle (notes) canvas of any elements
+         // Resets the drawing mode to true if not set already
+         function clearCanvas() {
+             canvas.clear();
+             notescanvas.clear();
+             if(canvas.isDrawingMode) {
+                 toggleDrawing();
+                 isEditing = false;
+             }
+         };
+ 
+         // Function to change brush color on user input
+         // Can also be called with an optional param to set color that way
+         function changeColor(param) {
+             let color;
+             if(typeof param !== "undefined") {
+                 color = param;
+             } else {
+                 color = document.getElementById('color').value;
+             }
+             canvas.freeDrawingBrush.color = color;
+         };
+ 
+         // Function to change the canvas brush type
+         // Parameters : brushType brush 
+         // Sets the canvas brush type to the selected element, then sets the color of the new brush
+ function changeBrushType(brush) {
+             let curr_brush_width = canvas.freeDrawingBrush.width;
+             switch(brush) {
+                 case brushType.pencil:
+                     canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
+                     break;
+                 case brushType.circle:
+                     canvas.freeDrawingBrush = new fabric.CircleBrush(canvas);
+                     break;
+                 case brushType.spray:
+                     canvas.freeDrawingBrush = new fabric.SprayBrush(canvas);
+                     break;
+                 case brushType.erase:
+                     canvas.freeDrawingBrush = new fabric.EraserBrush(canvas);
+                 default:
+                     break;
+             }
+             canvas.freeDrawingBrush.width = curr_brush_width;
+             changeColor(); 
+         };
+ 
+         // Changes the BrushWidth based on the Brush Width HTML bar
+         function changeBrushWidth() {
+             let width = document.getElementById('brushwidth').value;
+             document.getElementById('nwidth').textContent = width;
+             canvas.freeDrawingBrush.width = parseInt(width);
+         };
+ 
+         // Removes selected objects from the canvas
+         function deleteSelectedObjects() {
+             const activeObjects = canvas.getActiveObjects();
+             activeObjects.forEach(obj => {
+                 canvas.remove(obj);
+             });
+         };
+ 
+         // Adds a moveable / resizeable ruler to the canvas to draw around
+         // TODO : Fix Functionality
+         function addRuler() {
+             const ruler = new fabric.Rect({
+                 left: 100,
+                 top: 50,
+                 fill: 'gray',
+                 width: 400,  // Length of the ruler
+                 height: 10,  // Thickness of the ruler
+                 selectable: true,  // Make it draggable
+                 hasControls: true,  // Allow rotation and resizing
+                 originX: 'center',
+                 originY: 'center',
+             });
+ 
+             canvas.add(ruler);
+         };
+ 
+         // Mouse event to zoom in/out
+         // TODO : Fix Functionality
+         canvas.on('mouse:wheel', function(opt) {
+             if(canvas.isDrawingMode) return;
+             let delta = opt.e.deltaY;
+             let zoom = bottomcanvas.getZoom();
+             let newZoom = zoom * 0.999 ** delta;
+         
+             if (newZoom > 5) newZoom = 5;
+             if (newZoom < 1) newZoom = 1;
+ 
+             let zoomFactor = newZoom / zoom;
+ 
+             let vpt = this.viewportTransform;
+             let canvasCenter = {
+                 x: canvas.getWidth() / 2,
+                 y: canvas.getHeight() / 2
+             };
+ 
+             vpt[4] = zoomFactor * vpt[4] + (1 - zoomFactor) * canvasCenter.x * (1 - newZoom);
+             vpt[5] = zoomFactor * vpt[5] + (1 - zoomFactor) * canvasCenter.y * (1 - newZoom);
+ 
+             bottomcanvas.setZoom(newZoom);
+             opt.e.preventDefault();
+             opt.e.stopPropagation();
+         });
+ 
+         // Mouse event to drag canvas
+         canvas.on('mouse:down', function(opt) {
+             if(canvas.isDrawingMode || currentMode == modes.pan) return;
+             var evt = opt.e;
+             this.isDragging = true;
+             this.selection = false;
+             this.lastPosX = evt.clientX;
+             this.lastPosY = evt.clientY;
+         });
+ 
+         // TODO : Fix Functionality
+         canvas.on('mouse:move', function(opt) {
+             if(canvas.isDrawingMode || currentMode != modes.pan) return;
+             if (this.isDragging) {
+                 var e = opt.e;
+                 var vpt = this.viewportTransform;
+                 let zoom = canvas.getZoom();
+ 
+                 if(zoom <= 1) return;
+ 
+                 vpt[4] += e.clientX - this.lastPosX;
+                 vpt[5] += e.clientY - this.lastPosY;
+ 
+                 let canvasWidth = canvas.getWidth();
+                 let canvasHeight = canvas.getHeight();
+                 let imageWidth = canvas.getWidth() * zoom;
+                 let imageHeight = canvas.getHeight() * zoom;
+ 
+                 if (vpt[4] > 0) {
+                     vpt[4] = 0;
+                 } else if (vpt[4] < canvasWidth - imageWidth) {
+                     vpt[4] = canvasWidth - imageWidth;
+                 }
+                 if (vpt[5] > 0) {
+                     vpt[5] = 0;
+                 } else if (vpt[5] < canvasHeight - imageHeight) {
+                     vpt[5] = canvasHeight - imageHeight;
+                 }
+                 this.requestRenderAll();
+                 this.lastPosX = e.clientX;
+                 this.lastPosY = e.clientY;
+             }
+         });
+ 
+         // TODO : Fix Functionality
+         canvas.on('mouse:up', function(opt) {
+             if(canvas.isDrawingMode) return;
+             // on mouse up we want to recalculate new interaction
+             // for all objects, so we call setViewportTransform
+             this.setViewportTransform(this.viewportTransform);
+             this.isDragging = false;
+             this.selection = true;
+         });
+ 
+         // Event listener for the 'Delete' key to delete any selected objects when pressed
+         // TODO : Change functionality, maybe into a delete button? More thought required
+         document.addEventListener('keydown', function(evt) {
+             if(evt.key == 'Delete' || evt.key == 'Backspace') {
+                 deleteSelectedObjects();
+             }
+         });
+ 
+         // Toggles all objects present on the canvas to be non-selectable
+         function toggleSelectables() {
+             isSelectable = isSelectable ? false : true;
+             canvas.selection = isSelectable;
+             canvas.forEachObject(function(o) {
+                 o.selectable = isSelectable;
+             });
+         };
+ 
+         // Event listener for popover toggle show/hide logic
+         document.getElementById('popovertoggle').addEventListener('click', function() {
+             const popover = document.getElementById('popover');
+             isHidden = popover.classList.toggle('hidden');
+             const new_margin = isHidden ? '0px' : '50px';
+             const canvases = document.getElementById('canvases');
+             canvases.style.marginLeft = new_margin;
+         });
+ 
+         // Event Listeners for Shape / Text Modes 
+         // ===================================================================
+         // Toggles on/off event listeners for different drawing modes
+         // TODO : Rewrite and consolidate functions, some/all may be removed or changed
+         // ===================================================================
+ 
+         // DEPRICATED - OLD TEXT DRAW PROCESS
+         //================================================
+         // // Enables event listeners for Text Mode
+         // function enableTextDrawMode() {
+         //     canvas.on('mouse:down', rectOnMouseDown);
+         //     canvas.on('mouse:move', rectOnMouseMove);
+         //     canvas.on('mouse:up', textOnMouseUp);
+         // };
+ 
+         // // Disables event listeners for Text Mode
+         // function disableTextDrawMode() {
+         //     canvas.off('mouse:down', rectOnMouseDown);
+         //     canvas.off('mouse:move', rectOnMouseMove);
+         //     canvas.off('mouse:up', textOnMouseUp);
+         // };
+         //================================================
+ 
+         // Enables event listeners for adding a new MarkUp Layer
+         function newMarkUp() {
+             if(!isEditing) {
+                 canvas.on('mouse:down', newMarkUpLayer);
+                 isEditing = true;
+             }
+         }
+ 
+         function closeMarkUp() {
+             isEditing = false;
+             canvas.off('mouse:down', newMarkUpLayer);
+         }
+ 
+ 
+         // Enables event listeners for adding text to the canvas
+         function toggleTextDraw() {
+             if(currentMode == modes.text) {
+                 canvas.on('mouse:down', addTextBox);
+             } else {
+                 canvas.off('mouse:down', addTextBox);
+             }
+         };
+ 
+         // Enables event listeners for adding a note to the canvas
+         function toggleAddNote() {
+             if(currentMode == modes.note) {
+                 canvas.on('mouse:dblclick', addNote);
+             } else {
+                 canvas.off('mouse:dblclick', addNote);
+             }
+         }
+ 
+         // Enables event listeners for Rectangle Mode
+         function enableRectDrawMode() {
+             canvas.on('mouse:down', rectOnMouseDown);
+             canvas.on('mouse:move', rectOnMouseMove);
+             canvas.on('mouse:up', rectOnMouseUp);
+         };
+ 
+         // Disables event listeners for Rectangle Mode
+         function disableRectDrawMode() {
+             canvas.off('mouse:down', rectOnMouseDown);
+             canvas.off('mouse:move', rectOnMouseMove);
+             canvas.off('mouse:up', rectOnMouseUp);
+         };
+ 
+         // Enables event listeners for Ellipse Mode
+         function enableEllipseDrawMode() {
+             canvas.on('mouse:down', ellipseOnMouseDown);
+             canvas.on('mouse:move', ellipseOnMouseMove);
+             canvas.on('mouse:up', ellipseOnMouseUp);
+         };
+ 
+         // Disables event listeners for Ellipse Mode
+         function disableEllipseDrawMode() {
+             canvas.off('mouse:down', ellipseOnMouseDown);
+             canvas.off('mouse:move', ellipseOnMouseMove);
+             canvas.off('mouse:up', ellipseOnMouseUp);
+         };
+ 
+         // Enables event listeners for Circle Mode
+         function enableCircleDrawMode() {
+             canvas.on('mouse:down', circleOnMouseDown);
+             canvas.on('mouse:move', circleOnMouseMove);
+             canvas.on('mouse:up', circleOnMouseUp);
+         };
+ 
+         // Disables event listeners for Circle Mode
+         function disableCircleDrawMode() {
+             canvas.off('mouse:down', circleOnMouseDown);
+             canvas.off('mouse:move', circleOnMouseMove);
+             canvas.off('mouse:up', circleOnMouseUp);
+         };
+ 
+         // Enables event listeners for Triangle Mode
+         function enableTriangleDrawMode() {
+             canvas.on('mouse:down', triangleOnMouseDown);
+             canvas.on('mouse:move', triangleOnMouseMove);
+             canvas.on('mouse:up', triangleOnMouseUp);
+         };
+ 
+         // Disables event listeners for Triangle Mode
+         function disableTriangleDrawMode() {
+             canvas.off('mouse:down', triangleOnMouseDown);
+             canvas.off('mouse:move', triangleOnMouseMove);
+             canvas.off('mouse:up', triangleOnMouseUp);
+         };
+ 
+         // Event functions called by listeners
+         // ===================================================================
+         // Functions only executed when present in a specific drawing mode
+         // TODO : Fix functions, nearly most/all need some looking at
+         // ===================================================================
+ 
+         function newMarkUpLayer(o) {
+             canvas.off('mouse:down', newMarkUpLayer);
+             FileMaker.PerformScriptWithOption('New Markup Layer');
+         }
+ 
+         function addTextBox(o) {
+             const pointer = canvas.getPointer(o.e);
+             cursor_x = pointer.x;
+             cursor_y = pointer.y; 
+             FileMaker.PerformScriptWithOption('Open Add Text Card');
+         };
+ 
+         function createTextBox(user_text) {
+             const textBox = new fabric.IText('Text', {
+                 left: cursor_x,
+                 top: cursor_y,
+                 editable: true,
+                 text: user_text
+             });
+             canvas.add(textBox);
+             toggleMode(modes.text);
+         }
+ 
+         function addNote(o) {
+             const pointer = canvas.getPointer(o.e);
+             cursor_x = pointer.x;
+             cursor_y = pointer.y; 
+             FileMaker.PerformScriptWithOption('Open Add Note Card');
+         }
+ 
+         function createNewNote(num) {
+             let color = document.getElementById('color').value;
+             const new_shape = new fabric.Circle({
+                 radius: 10,
+                 fill: 'solid',
+                 stroke: color,
+                 strokeWidth: 2,
+                 originX: 'center',
+                 originY: 'center'
+             });
+             const text = new fabric.Text(num, {
+                 fontSize: 10,
+                 originX: 'center',
+                 originY: 'center',
+                 stroke: 'white'
+             });
+             const group = new fabric.Group([new_shape, text], {
+                 left: cursor_x,
+                 top: cursor_y,
+             })
+             canvas.add(group);
+             toggleMode(modes.note);
+         }
+function rectOnMouseDown(o) {
+             const pointer = canvas.getPointer(o.e);
+             const originX = pointer.x;
+             const originY = pointer.y;
+ 
+             shapeOutline = new fabric.Rect({
+                 left: originX,
+                 top: originY,
+                 fill: 'transparent',
+                 stroke: 'black',
+                 strokeWidth: 2,
+                 selectable: false
+             });
+             canvas.add(shapeOutline);
+         };
+ 
+         function rectOnMouseMove(o) {
+             const pointer = canvas.getPointer(o.e);
+             const width = Math.abs(pointer.x - shapeOutline.left);
+             const height = Math.abs(pointer.y - shapeOutline.top);
+ 
+             shapeOutline.set({
+                 width: width,
+                 height: height,
+                 left: Math.min(pointer.x, shapeOutline.left),
+                 top: Math.min(pointer.y, shapeOutline.top)
+             });
+             canvas.requestRenderAll();
+         };
+ 
+         function textOnMouseUp(o) {
+             const pointer = canvas.getPointer(o.e);
+             const width = Math.abs(pointer.x - shapeOutline.left);
+             const height = Math.abs(pointer.y - shapeOutline.top);
+             
+             const textBox = new fabric.IText('Text', {
+                 left: shapeOutline.left + 10,
+                 top: shapeOutline.top + 10,
+                 width: width,
+                 height: height,
+                 fontSize: width / 2,
+                 editable: true
+             });
+             canvas.remove(shapeOutline);
+             canvas.add(textBox);
+             toggleMode(modes.text);
+         };
+ 
+         function rectOnMouseUp(o) {
+             const pointer = canvas.getPointer(o.e);
+             const width = Math.abs(pointer.x - shapeOutline.left);
+             const height = Math.abs(pointer.y - shapeOutline.top);
+             
+             const new_shape = new fabric.Rect({
+                 left: shapeOutline.left,
+                 top: shapeOutline.top,
+                 width: width,
+                 height: height,
+                 fill: 'transparent',
+                 stroke: 'black',
+                 strokeWidth: 2,
+             });
+             canvas.remove(shapeOutline);
+             canvas.add(new_shape);
+             toggleMode(modes.shape.rect);
+         };
+ 
+         function circleOnMouseDown(o) {
+             const pointer = canvas.getPointer(o.e);
+             const originX = pointer.x;
+             const originY = pointer.y;
+ 
+             shapeOutline = new fabric.Circle({
+                 left: originX,
+                 top: originY,
+                 radius: 1,
+                 fill: 'transparent',
+                 stroke: 'black',
+                 strokeWidth: 2,
+                 selectable: false
+             });
+             canvas.add(shapeOutline);
+         };
+ 
+         function circleOnMouseMove(o) {
+             const pointer = canvas.getPointer(o.e);
+             const width = Math.abs(pointer.x - shapeOutline.left);
+             const height = Math.abs(pointer.y - shapeOutline.top);
+ 
+             shapeOutline.set({
+                 radius: (height / 2) + (width ** 2) / (8 * height),
+                 left: Math.min(pointer.x, shapeOutline.left),
+                 top: Math.min(pointer.y, shapeOutline.top)
+             });
+             canvas.requestRenderAll();
+         };
+ 
+         function circleOnMouseUp(o) {
+             const pointer = canvas.getPointer(o.e);
+             const width = Math.abs(pointer.x - shapeOutline.left);
+             const height = Math.abs(pointer.y - shapeOutline.top);
+             
+             const new_shape = new fabric.Circle({
+                 left: Math.min(pointer.x, shapeOutline.left),
+                 top: Math.min(pointer.y, shapeOutline.top),
+                 radius: (height / 2) + (width ** 2) / (8 * height),
+                 fill: 'transparent',
+                 stroke: 'black',
+                 strokeWidth: 2,
+             });
+             canvas.remove(shapeOutline);
+             canvas.add(new_shape);
+             toggleMode(modes.shape.circle);
+         };
+ 
+         function ellipseOnMouseDown(o) {
+             const pointer = canvas.getPointer(o.e);
+             const originX = pointer.x;
+             const originY = pointer.y;
+ 
+             shapeOutline = new fabric.Ellipse({
+                 left: originX,
+                 top: originY,
+                 rx: 1,
+                 ry: 1,
+                 fill: 'transparent',
+                 stroke: 'black',
+                 strokeWidth: 2,
+                 selectable: false
+             });
+             canvas.add(shapeOutline);
+         };
+ 
+         function ellipseOnMouseMove(o) {
+             const pointer = canvas.getPointer(o.e);
+             const width = Math.abs(pointer.x - shapeOutline.left);
+             const height = Math.abs(pointer.y - shapeOutline.top);
+ 
+             shapeOutline.set({
+                 rx: (height / 2) + (width ** 2) / (8 * height),
+                 ry: (width / 2) + (height ** 2),
+                 left: Math.min(pointer.x, shapeOutline.left),
+                 top: Math.min(pointer.y, shapeOutline.top)
+             });
+             canvas.requestRenderAll();
+         };
+ 
+         function ellipseOnMouseUp(o) {
+             const pointer = canvas.getPointer(o.e);
+             const width = Math.abs(pointer.x - shapeOutline.left);
+             const height = Math.abs(pointer.y - shapeOutline.top);
+             
+             const new_shape = new fabric.Ellipse({
+                 left: Math.min(pointer.x, shapeOutline.left),
+                 top: Math.min(pointer.y, shapeOutline.top),
+                 radius: (height / 2) + (width ** 2) / (8 * height),
+                 fill: 'transparent',
+                 stroke: 'black',
+                 strokeWidth: 2,
+             });
+             canvas.remove(shapeOutline);
+             canvas.add(new_shape);
+             toggleMode(modes.shape.ellipse);
+         };
+ 
+         function triangleOnMouseDown(o) {
+             // TODO : Implement
+         };
+ 
+         function triangleOnMouseMove(o) {
+             // TODO : Implement
+         };
+ 
+         function triangleOnMouseUp(o) {
+             // TODO : Implement
+         };
+ 
+     </script>
